@@ -24,28 +24,36 @@ class SplitNode:
         self.X = np.array(X)
         self.t = np.array(t)
 
-        if self.X.shape[1] != self.t.shape[0]:
+        if self.X.shape[0] != self.t.shape[0]:
             raise Exception("Shapes", self.X.shape, "and", self.t.shape, "of X and t are not compatible")
         
-        pred = np.bincount(t).argmax()
+        self.pred = np.bincount(self.t).argmax()
         
 
     def split(self, index, value):
         """
         Splits the data on the feature at the given index at the given value
         """
-        left_indices = self.X[index] <= value
-        right_indices = self.X[index] > value
+        left_indices = self.X[:,index] <= value
+        right_indices = ~left_indices
         X_left = self.X[left_indices]
         X_right = self.X[right_indices]
         t_left = self.t[left_indices]
         t_right = self.t[right_indices]
 
-        X = None
-        t = None
-        pred = None
+        self.X = None
+        self.t = None
+        self.pred = None
 
-        left = SplitNode(X_left, t_left)
-        right = SplitNode(X_right, t_right)
+        self.left = SplitNode(X_left, t_left)
+        self.right = SplitNode(X_right, t_right)
         self.feature = index
         self.value = value
+
+
+if __name__ == '__main__':
+    X = np.array([[1, 2],[3, 2], [4, 9]])
+    t = np.array([0, 1, 1])
+    node = SplitNode(X, t)
+    node.split(0, 2)
+    print(node.left.X, node.right.X, node.left.pred, node.right.pred)
