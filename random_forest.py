@@ -1,4 +1,4 @@
-import numpy as np
+from tree import TreeNode
 
 # first implement decision tree to implement random forest
 class DecisionTreeClassifier:
