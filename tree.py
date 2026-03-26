@@ -1,3 +1,5 @@
+from collections import Counter
+
 import numpy as np
 
 # first implement decision tree to implement random forest
@@ -139,27 +141,83 @@ class DecisionTreeClassifier:
                          n_right * self.__criterion(t[~left_mask])) / N
                 
                 if score < best_score:
-                    best_score = self.score
+                    best_score = score
                     best_feature = feature_idx
                     best_threshold = thresh
 
         return best_feature, best_threshold, best_score
 
-    def fit(self, X, t):
+    def fit(self, X, t, _depth=0):
         """
+        Recursively builds the decision tree.
+
+        Stop (make a leaf) conditions:
+        - max_depth reached
+        - fewer samples than min_samples_split
+        - node is already pure (impurity = 0)
+        - no valid split found
+
         X: array-like of shape (N,d)
         t: array-like of shape (N,)
+        _depth : int – current depth (for recursion)
         """
-        pass
+        counts = Counter(t)
+        self.pred  = max(counts, key=counts.get)
 
+        # stopping conditions
+        if (
+            (self.max_depth is not None and _depth >= self.max_depth) or
+            len(t) < self.min_samples_split or
+            self.__criterion_fn(t) == 0.0 # pure node
+        ):
+            return # remain a leaf
+        
+        # find best split
+        best_feat, best_thresh, best_score = self.__best_split(X, t)
+ 
+        if best_feat is None or best_score >= self.__criterion_fn(t):
+            return # no valid split, remain leaf
+        
+        # record split parameters
+        self.feature = best_feat
+        self.split = best_thresh
+
+        # partition data
+        mask = X[:, best_feat] <= best_thresh
+        X_left, t_left   = X[ mask], t[ mask]
+        X_right, t_right = X[~mask], t[~mask]
+
+        # grow children
+        self.left = DecisionTreeClassifier(
+            self.max_depth, self.min_samples_split,
+            self.max_features, self.criterion
+        )
+        self.left.fit(X_left, t_left, _depth + 1)
+ 
+        self.right = DecisionTreeClassifier(
+            self.max_depth, self.min_samples_split,
+            self.max_features, self.criterion
+        )
+        self.right.fit(X_right, t_right, _depth + 1)
 
     def predict(self, x):
         """
         Predicts the label of data point x after fitting
+        Traverse tree from root to leaf by comparing x[feature] to the stored
+        threshold at each internal node.
+
         x: array-like with shape (d,)
         """
-        pass
-
+        # if leaf node, return stored majority prediction
+        if self.left is None and self.right is None:
+            return self.pred
+        
+        # if internal node, compare feature to threshold and go left or right
+        if x[self.feature] <= self.split:
+            return self.left.predict(x)
+        else:
+            return self.right.predict(x)
+        
 
     def score(self, X_test, t_test):
         """
