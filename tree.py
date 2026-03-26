@@ -14,6 +14,8 @@ class DecisionTreeClassifier:
     # hyperparameters
     max_depth = None
     min_samples_split = None
+    max_features = None # num of features to consider for each split
+    criterion = 'gini' # default gini
 
     # tree structure
     left = None
@@ -26,21 +28,122 @@ class DecisionTreeClassifier:
     feature = None # index of feature to split at
     split = None # value to split at
 
-    def __init__(self, max_depth, min_samples_split):
+    def __init__(self, max_depth, min_samples_split, max_features=None, criterion='gini'):
         self.max_depth = max_depth
         self.min_samples_split = min_samples_split
+        self.max_features = max_features
+        self.criterion = criterion
 
 
-    def __criterion(self, X, t, feature, split):
+    def __gini(self, t):
         """
-        Helper function that outputs the cross entropy (or gini impurity?) of the data split provided
-        X: array-like of shape (N,d)
+        Computes the gini impurity of label array t
+
+        Gini = 1 - sum(p_k^2) for each class k
+
+        This measures the the probability that two randomly chosen samples from the node would have different labels 
+        Note: Gini = 0 means pure node.
+ 
         t: array-like of shape (N,)
-        feature: index of feature to split at
-        split: value to split at (i.e. we split X by the condition X[feature] <= split)
+        Returns: float
         """
-        pass
+        n = len(t)
+        if n == 0:
+            return 0.0
+        _, counts = np.unique(t, return_counts=True)
 
+        probs = counts / n
+        return 1.0 - np.sum(probs ** 2)
+    
+
+    def __entropy(self, t):
+        """
+        Computes the entropy/information gain of label array t
+
+        Entropy = -sum(p_k * log2(p_k)) for each class k.
+
+        This measures the average number of bits needed to encode the class label. 
+        Note: Entropy = 0 means pure node. 
+        
+        When we pick splits, we maximize information gain = parent_entropy - weighted_child_entropy,
+        which is also equivalent to minimizing the weighted child entropy.
+
+        t: array-like of shape (N,)
+        Returns: float in [0, log2(K)] where K = number of classes
+        """
+        n = len(t)
+        if n == 0:
+            return 0.0
+        _, counts = np.unique(t, return_counts=True)
+
+        probs = counts / n
+        probs = probs[probs > 0]  # avoid log2(0)
+        return -np.sum(probs * np.log2(probs))
+    
+    def __criterion(self, t):
+        """
+        Dispatches to the selected impurity measure
+
+        t: array-like of shape (N,)
+        Returns: float
+        """
+        if self.criterion == 'entropy':
+            return self.__entropy(t)
+        else:
+            return self.__gini(t)
+
+    def __best_split(self, X, t):
+        """
+        Finds the best (feature, threshold) pair that minimizes weighted gini impurity of the resulting child nodes
+
+        Note that each call only a ranomd subset of max_features features is considered (decorrelation?)
+ 
+        X: array-like of shape (N, d)
+        t: array-like of shape (N,)
+        Returns: (best_feature_index, best_threshold, best_score) or (None, None, inf)
+        """
+        N, d = X.shape
+        best_feature = None
+        best_threshold = None
+        best_score = np.inf
+
+        # If no given max_features,randomly pick that many feature indices
+        if self.max_features is not None and self.max_features < d:
+            feature_indices = np.random.choice(d, size=self.max_features, replace=False)
+        else:
+            feature_indices = np.arange(d)
+        
+        for feature_idx in feature_indices:
+            col = X[:, feature_idx]
+            unique_vals = np.unique(col)
+            if len(unique_vals) <= 1:
+                continue
+
+            # Use midpoint
+            thresholds = (unique_vals[:-1] + unique_vals[1:] / 2.0)
+
+            # subsample threshold to 50 if more than 50 unique midpoints
+            if len(thresholds) > 50:
+                idx = np.linspace(0, len(thresholds) - 1, 50, dtype=int) # pick evenly spaced indices 10, 20, 30 etc.
+                thresholds = thresholds[idx]
+
+            for thresh in thresholds:
+                left_mask = col <= thresh # boolean array
+                n_left = np.sum(left_mask)
+                n_right = N - n_left
+                if n_left < 1 or n_right < 1:
+                    continue
+
+                # weighted gini impurity of the split
+                score = (n_left * self.__criterion(t[left_mask]) +
+                         n_right * self.__criterion(t[~left_mask])) / N
+                
+                if score < best_score:
+                    best_score = self.score
+                    best_feature = feature_idx
+                    best_threshold = thresh
+
+        return best_feature, best_threshold, best_score
 
     def fit(self, X, t):
         """
