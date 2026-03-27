@@ -122,7 +122,7 @@ class DecisionTreeClassifier:
                 continue
 
             # Use midpoint
-            thresholds = (unique_vals[:-1] + unique_vals[1:] / 2.0)
+            thresholds = (unique_vals[:-1] + unique_vals[1:]) / 2.0
 
             # subsample threshold to 50 if more than 50 unique midpoints
             if len(thresholds) > 50:
@@ -225,4 +225,5 @@ class DecisionTreeClassifier:
         X_test: array-like with shape (M, d)
         t_test: array-like with shape (M,)
         """
-        pass
+        predictions = np.array([self.predict(x) for x in X_test])
+        return np.mean(predictions == t_test)
