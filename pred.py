@@ -90,6 +90,92 @@ def _read_csv_as_dicts(csv_filename):
             rows.append(renamed)
     return rows
 
+
+def vectorise(csv_filename, vec_params):
+    """
+    Convert CSV into a feature matrix X of shape (M, d).
+ 
+    Same pipeline as the colab:
+      1. Min-max scale numeric columns using training min/max/median
+      2. One-hot encode categorical cols using training category lists
+      3. TF-IDF encode text cols using training vocab + IDF weights
+ 
+    All scaling/vocab parameters come from vec_params, which was saved
+    from the training data in the colab so that test rows are transformed
+    identically.
+ 
+    csv_filename : str  – path to the test CSV
+    vec_params   : dict – saved from the colab via save_vec_params()
+    Returns      : ndarray (M, d)
+    """
+    rows = _read_csv_as_dicts(csv_filename)
+    M    = len(rows)
+ 
+    feature_blocks = []
+ 
+    # numeric columns
+    # each column min-max scaled to [0, 1]
+    # missing values replaced with training-set median before scaling
+    for col in NUMERIC_COLS:
+        vals   = _extract_numeric(rows, col)
+        median = vec_params['numeric_medians'][col]
+        mn     = vec_params['numeric_mins'][col]
+        mx     = vec_params['numeric_maxs'][col]
+ 
+        # fill NaN with training median
+        vals[np.isnan(vals)] = median
+ 
+        # min-max scaling 
+        if mx > mn:
+            vals = (vals - mn) / (mx - mn)
+        else:
+            vals = np.zeros(M, dtype=float)
+ 
+        feature_blocks.append(vals.reshape(M, 1))
+ 
+    # categorical columns (one-hot)
+    # each response if comma-split into set of categories
+    # a 1 is emitted for each category observed in the training set that is present in the response
+    # categories not seen in training are ignored
+    for col in CAT_COLS:
+        # tokenise: split on comma, strip whitespace
+        parsed = []
+        for row in rows:
+            raw  = row.get(col, '')
+            cats = {c.strip() for c in str(raw).split(',') if c.strip() != 'nan'}
+            parsed.append(cats)
+ 
+        # emit one binary column per category observed in the training set
+        cats_list = vec_params['cat_categories'][col]   # ordered list from training
+        block     = np.zeros((M, len(cats_list)), dtype=float)
+        for j, cat in enumerate(cats_list):
+            for i, cat_set in enumerate(parsed):
+                if cat in cat_set:
+                    block[i, j] = 1.0
+        feature_blocks.append(block)
+ 
+    # text columns (TF-IDF)
+    # for each word in the training vocab, TF-IDF score = tf * idf
+    # IDF was computed on the training set and stored in vec_params
+    # words not in the training vocab are ignored
+    for col in TEXT_COLS:
+        # tokenise 
+        parsed = [_word_counter(row.get(col, '')) for row in rows]
+ 
+        vocab_words = vec_params['tfidf_vocab'][col]    # ordered word list
+        idf_weights = vec_params['tfidf_idf'][col]      # parallel IDF floats
+ 
+        block = np.zeros((M, len(vocab_words)), dtype=float)
+        for j, (word, idf) in enumerate(zip(vocab_words, idf_weights)):
+            for i, d in enumerate(parsed):
+                tf = float(d.get(word, 0))
+                if tf > 0:
+                    block[i, j] = tf * idf
+        feature_blocks.append(block)
+ 
+    return np.hstack(feature_blocks)
+
+
 def build_model_from_array(arr):
     """
     From the provided array, build and return a fitted DecisionTreeClassifier. Refer to
