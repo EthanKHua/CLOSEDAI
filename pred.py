@@ -213,9 +213,11 @@ def build_model_from_array(arr):
         curr_node.feature = arr[3][curr_node_index]
         curr_node.threshold = arr[4][curr_node_index]
 
+    return tree_nodes[0]
 
 
 
 if __name__ == "__main__":
     data = np.load("parameters.npy", allow_pickle=True)
-    model = build_model_from_array(data)
+    print(data[0])
+    model = build_model(data)
