@@ -1,6 +1,7 @@
 import numpy as np
 import csv
 from tree import DecisionTreeClassifier
+from random_forest import RandomForestClassifier
 
 
 # constants
@@ -175,6 +176,16 @@ def vectorise(csv_filename, vec_params):
  
     return np.hstack(feature_blocks)
 
+
+def build_model(data):
+    estimators = []
+    for arr in data:
+        estimators.append(build_model_from_array(arr))
+    
+    rf = RandomForestClassifier()
+    rf.estimators = estimators
+
+    return rf
 
 def build_model_from_array(arr):
     """
