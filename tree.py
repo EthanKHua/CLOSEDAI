@@ -30,7 +30,7 @@ class DecisionTreeClassifier:
     feature = None # index of feature to split at
     split = None # value to split at
 
-    def __init__(self, max_depth, min_samples_split, max_features=None, criterion='gini'):
+    def __init__(self, max_depth=None, min_samples_split=2, max_features=None, criterion='gini'):
         self.max_depth = max_depth
         self.min_samples_split = min_samples_split
         self.max_features = max_features

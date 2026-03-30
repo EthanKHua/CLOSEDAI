@@ -41,6 +41,10 @@ NUMERIC_COLS = ['emotion', 'sombre', 'content', 'calm', 'uneasy', 'num_colours',
 CAT_COLS     = ['room', 'view_with', 'season']
 TEXT_COLS    = ['description', 'as_food', 'soundtrack']
 
+# characters to strip from tokens
+_PUNCTUATION = set('.,;:!?()[]{}"\'-/\\@#$%^&*~`+=<>')
+
+
 # parsing helpers
 def _word_counter(text):
     """
@@ -51,30 +55,51 @@ def _word_counter(text):
     """
     if not isinstance(text, str):
         return {}
-    tokens = text.strip().lower().replace(',', '').split(' ')
+    
+    cleaned = text.strip().lower().replace(',', '')
+    tokens = []
+
+    for raw_tok in cleaned.split(' '):
+        tok = ''
+        for ch in raw_tok:
+            if ch not in _PUNCTUATION:
+                tok += ch
+        if tok and tok not in STOP_WORDS and len(tok) > 1:
+            tokens.append(tok)
+
     counts = {}
     for tok in tokens:
-        if (
-            tok and
-            tok not in STOP_WORDS and
-            len(tok) > 1
-        ):
-            counts[tok] = counts.get(tok, 0) + 1
-
+        counts[tok] = counts.get(tok, 0) + 1
     return counts
  
+def _first_int(s):
+    """
+    Scans string s and returns the first run of digit characters as an int,
+    or None if no digits are found. 
+    """
+    s = str(s)
+    i = 0
+
+    while i < len(s) and not s[i].isdigit():
+        i += 1
+    j = i
+
+    while j < len(s) and s[j].isdigit():
+        j += 1
+    return int(s[i:j]) if j > i else None
+
 def _extract_numeric(rows, col):
     """
     Pull a float value from a column that may contain Likert text like
-    '(3) Neutral'.  Extracts the first integer found.
-    
+    '(3) Neutral'.  Extracts the first integer found using _first_int.
+
     Returns np.nan on failure.
     """
     out = []
     for row in rows:
         val = row.get(col, '')
-        m   = re.search(r'\d+', str(val))
-        out.append(float(m.group()) if m else np.nan)
+        m   = _first_int(val)
+        out.append(float(m) if m is not None else np.nan)
     return np.array(out, dtype=float)
 
 def _read_csv_as_dicts(csv_filename):
@@ -211,11 +236,38 @@ def build_model_from_array(arr):
         stack.append(arr[2][curr_node_index])
 
         curr_node.feature = arr[3][curr_node_index]
-        curr_node.threshold = arr[4][curr_node_index]
+        curr_node.split = arr[4][curr_node_index]  
 
+    return tree_nodes[0]  
+
+
+def predict_all(csv_filename):
+    """
+    Predication workflow:
+
+    Load vectorized parameters from sklearn and convert the data from csv by vectorizing
+
+    Load the per-tree sklearn parameter from sklearn then reconstruct the random forest and run democractic prediction
+
+    Map integer class indices -> painting names
+
+    Returns a list of correct painting names supposedly, one per CSV row
+    """
+    vec_params = np.load("vec_params.npy", allow_pickle=True).item()
+    X = vectorise(csv_filename, vec_params)
+
+    data  = np.load("parameters.npy", allow_pickle=True)
+    model = build_model(data)
+
+    indices = model.predict_all(X)
+    return [PAINTING_NAMES[i] for i in indices]
 
 
 
 if __name__ == "__main__":
-    data = np.load("parameters.npy", allow_pickle=True)
-    model = build_model_from_array(data)
+    # idk just in case
+    import sys
+    csv_file = sys.argv[1] if len(sys.argv) > 1 else "test.csv"
+    predictions = predict_all(csv_file)
+    for p in predictions:
+        print(p)
